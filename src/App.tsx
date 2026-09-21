@@ -6,16 +6,36 @@ import { SourceExplorerPage } from './pages/SourceExplorerPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { AboutPage } from './pages/AboutPage';
+import { RealTimeStatusModal } from './components/RealTimeStatusModal';
 import { VerificationResult } from './types/verification';
 import { verifyClaim } from './services/verificationEngine';
 import axios from 'axios';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('home');
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false); // Default: Live Data Mode!
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [currentClaimQuery, setCurrentClaimQuery] = useState<string>('');
   const [currentResult, setCurrentResult] = useState<VerificationResult | null>(null);
   const [history, setHistory] = useState<VerificationResult[]>([]);
+
+  // Connector statuses for real-time verification modal
+  const [connectorStatuses, setConnectorStatuses] = useState<{
+    name: string;
+    status: 'SEARCHING' | 'FOUND' | 'NO RESULTS' | 'RATE LIMITED' | 'API ERROR' | 'DEMO FALLBACK' | 'Connected';
+    itemCount: number;
+  }[]>([
+    { name: 'Google Fact Check Tools API', status: 'SEARCHING', itemCount: 0 },
+    { name: 'Wikidata SPARQL / REST', status: 'SEARCHING', itemCount: 0 },
+    { name: 'Wikipedia REST API', status: 'SEARCHING', itemCount: 0 },
+    { name: 'GDELT 2.0 Global News', status: 'SEARCHING', itemCount: 0 },
+    { name: 'PubMed NCBI E-Utilities', status: 'SEARCHING', itemCount: 0 },
+    { name: 'Crossref REST API', status: 'SEARCHING', itemCount: 0 },
+    { name: 'OpenAlex Academic Graph', status: 'SEARCHING', itemCount: 0 },
+    { name: 'World Bank Open Data', status: 'SEARCHING', itemCount: 0 },
+    { name: 'data.gov.in (India Open Data)', status: 'SEARCHING', itemCount: 0 },
+    { name: 'EU Open Data Portal', status: 'SEARCHING', itemCount: 0 },
+  ]);
 
   // Load local history on mount
   useEffect(() => {
@@ -41,22 +61,50 @@ export const App: React.FC = () => {
 
   const handleVerifyClaim = async (claim: string) => {
     setIsLoading(true);
+    setCurrentClaimQuery(claim);
+
+    // Reset progress modal states
+    setConnectorStatuses([
+      { name: 'Google Fact Check Tools API', status: 'SEARCHING', itemCount: 0 },
+      { name: 'Wikidata SPARQL / REST', status: 'SEARCHING', itemCount: 0 },
+      { name: 'Wikipedia REST API', status: 'SEARCHING', itemCount: 0 },
+      { name: 'GDELT 2.0 Global News', status: 'SEARCHING', itemCount: 0 },
+      { name: 'PubMed NCBI E-Utilities', status: 'SEARCHING', itemCount: 0 },
+      { name: 'Crossref REST API', status: 'SEARCHING', itemCount: 0 },
+      { name: 'OpenAlex Academic Graph', status: 'SEARCHING', itemCount: 0 },
+      { name: 'World Bank Open Data', status: 'SEARCHING', itemCount: 0 },
+      { name: 'data.gov.in (India Open Data)', status: 'SEARCHING', itemCount: 0 },
+      { name: 'EU Open Data Portal', status: 'SEARCHING', itemCount: 0 },
+    ]);
+
     try {
       let result: VerificationResult;
-      // Try backend API first, fallback to client verification service
+      // Try backend API endpoint first
       try {
-        const res = await axios.post('/api/verify', { claim, isDemoMode }, { timeout: 10000 });
+        const res = await axios.post('/api/verify', { claim, isDemoMode }, { timeout: 15000 });
         result = res.data;
       } catch {
         result = await verifyClaim(claim, isDemoMode);
       }
+
+      // Update connector statuses from result
+      if (result.sourcesUsed && result.sourcesUsed.length > 0) {
+        setConnectorStatuses(result.sourcesUsed.map(s => ({
+          name: s.name,
+          status: s.status,
+          itemCount: s.itemCount
+        })));
+      }
+
+      // Short delay for visual progress experience
+      await new Promise(r => setTimeout(r, 600));
 
       setCurrentResult(result);
       saveHistoryItem(result);
       setActiveTab('verify');
     } catch (error) {
       console.error('Verification failed:', error);
-      alert('An error occurred while verifying the claim. Please try again.');
+      alert('An error occurred while verifying the claim. Please check network connectivity.');
     } finally {
       setIsLoading(false);
     }
@@ -116,12 +164,19 @@ export const App: React.FC = () => {
         {activeTab === 'about' && <AboutPage />}
       </main>
 
+      {/* Real-time Connector Status Modal during execution */}
+      <RealTimeStatusModal
+        isOpen={isLoading}
+        claim={currentClaimQuery}
+        sources={connectorStatuses}
+      />
+
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/90 py-8 mt-12 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <span className="font-bold text-slate-300">REALITYCHECK AI</span>
-            <span>— Transparent Evidence Verification</span>
+            <span>— Real-Time Evidence Verification</span>
           </div>
           <div>
             <span>Powered by 10 Free Open Data Repositories</span>

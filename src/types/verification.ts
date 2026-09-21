@@ -31,7 +31,8 @@ export type SourceType =
 export type RelationshipType = 'SUPPORTS' | 'CONTRADICTS' | 'CONTEXT';
 
 export interface EvidenceItem {
-  id: string;
+  id: string; // e.g., "E1", "E2"
+  traceTag?: string; // e.g., "[E1]"
   source: string; // e.g. "World Bank", "PubMed", "Wikidata"
   sourceType: SourceType;
   title: string;
@@ -46,6 +47,7 @@ export interface EvidenceItem {
   relationship: RelationshipType;
   relevance: number; // 0 to 1
   isPrimary?: boolean;
+  retrievedAt?: string; // Real-time timestamp e.g. "21 September 2026 21:42:18 IST"
   metadata?: Record<string, any>;
 }
 
@@ -58,13 +60,44 @@ export interface FactCheckItem {
   title?: string;
 }
 
+export interface NumericalValidation {
+  claimedValue: string;
+  reportedValue: string;
+  metricName: string;
+  countryOrLocation: string;
+  unit: string;
+  year?: number;
+  difference: string;
+  sourceName: string;
+  sourceUrl: string;
+  hasYearSpecified: boolean;
+}
+
+export interface RecommendedDataset {
+  name: string;
+  reason: string;
+  url: string;
+}
+
+export interface SourceConflict {
+  sourceA: string;
+  valueA: string;
+  yearA: string;
+  sourceB: string;
+  valueB: string;
+  yearB: string;
+  reason: string;
+  urlA: string;
+  urlB: string;
+}
+
 export interface VerificationResult {
   id: string;
   claim: string;
   category: ClaimCategory;
   verdict: VerdictType;
   confidence: number; // 0 to 100
-  summary: string;
+  summary: string; // AI explanation with [E1], [E2] trace tags
   extractedEntities: {
     entities: string[];
     dates: string[];
@@ -72,6 +105,9 @@ export interface VerificationResult {
     numbers: string[];
     keywords: string[];
   };
+  numericalValidation?: NumericalValidation;
+  recommendedDatasets?: RecommendedDataset[];
+  sourceConflicts?: SourceConflict[];
   supportingEvidence: EvidenceItem[];
   contradictingEvidence: EvidenceItem[];
   contextEvidence: EvidenceItem[];
@@ -79,10 +115,13 @@ export interface VerificationResult {
   newsEvidence: EvidenceItem[];
   factChecks: FactCheckItem[];
   backgroundEvidence: EvidenceItem[];
+  sourcesQueried: number;
+  sourcesResponding: number;
+  sourcesWithEvidence: number;
   sourcesUsed: {
     name: string;
     type: SourceType;
-    status: 'Connected' | 'Searching' | 'No results' | 'Rate limited' | 'Error' | 'Demo fallback';
+    status: 'SEARCHING' | 'FOUND' | 'NO RESULTS' | 'RATE LIMITED' | 'API ERROR' | 'DEMO FALLBACK' | 'Connected';
     itemCount: number;
     responseTimeMs?: number;
   }[];
@@ -93,8 +132,8 @@ export interface VerificationResult {
     relationship: RelationshipType;
     url: string;
   }[];
-  timestamp: string;
-  isDemo?: boolean;
+  timestamp: string; // Real-time timestamp e.g. "21 September 2026 21:42:18 IST"
+  isDemo: boolean;
 }
 
 export interface SourceInfo {
@@ -103,7 +142,6 @@ export interface SourceInfo {
   description: string;
   dataType: string;
   sourceType: SourceType;
-  icon: string;
   baseUrl: string;
   priorityCategories: ClaimCategory[];
 }

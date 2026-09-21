@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Database, History, Info, HelpCircle, ToggleLeft, ToggleRight, Sparkles } from 'lucide-react';
+import { ShieldCheck, Database, History, Info, HelpCircle, ToggleLeft, ToggleRight, Sparkles, Radio } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
@@ -18,7 +18,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, isDemoM
   ];
 
   return (
-    <header className="sticky top-0 z-50 glass-card border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 glass-card border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl">
+      {/* Top Mode Status Banner */}
+      <div className={`py-1 text-center text-[11px] font-extrabold tracking-wider uppercase flex items-center justify-center space-x-2 ${
+        isDemoMode
+          ? 'bg-amber-500/20 text-amber-300 border-b border-amber-500/30'
+          : 'bg-emerald-500/20 text-emerald-300 border-b border-emerald-500/30'
+      }`}>
+        <Radio className="w-3.5 h-3.5 animate-pulse" />
+        <span>
+          {isDemoMode ? 'DEMO DATA — NOT LIVE' : 'REALITYCHECK AI | LIVE EVIDENCE VERIFICATION ● LIVE'}
+        </span>
+      </div>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <div 
@@ -70,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, isDemoM
           <div className="flex items-center space-x-2 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800">
             <Sparkles className={`w-4 h-4 ${isDemoMode ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`} />
             <span className="text-xs font-medium text-slate-300">
-              {isDemoMode ? 'Demo Mode' : 'Live APIs'}
+              {isDemoMode ? 'Demo Mode' : 'Live Data API'}
             </span>
             <button
               onClick={() => setIsDemoMode(!isDemoMode)}

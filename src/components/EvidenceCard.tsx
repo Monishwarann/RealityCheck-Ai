@@ -1,6 +1,6 @@
 import React from 'react';
 import { EvidenceItem } from '../types/verification';
-import { ExternalLink, Info, Calendar, Building, FileText, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
+import { ExternalLink, Info, Calendar, Building, FileText, CheckCircle, XCircle, HelpCircle, Clock } from 'lucide-react';
 
 interface EvidenceCardProps {
   item: EvidenceItem;
@@ -53,15 +53,18 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ item, onWhyThisSourc
   const RelIcon = rel.icon;
 
   return (
-    <div className="glass-card glass-card-hover rounded-2xl p-5 border border-slate-800 bg-slate-900/60 flex flex-col justify-between space-y-4">
+    <div id={`evidence-${item.id}`} className="glass-card glass-card-hover rounded-2xl p-5 border border-slate-800 bg-slate-900/60 flex flex-col justify-between space-y-4">
       <div className="space-y-3">
-        {/* Header Tags */}
+        {/* Header Tags & Trace Tag */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
+            <span className="text-xs font-black text-white bg-blue-600 px-2 py-0.5 rounded shadow">
+              {item.traceTag || `[${item.id}]`}
+            </span>
             <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${getSourceTypeBadge()}`}>
               {item.sourceType}
             </span>
-            <span className="text-xs font-semibold text-slate-300 flex items-center space-x-1">
+            <span className="text-xs font-bold text-slate-300 flex items-center space-x-1">
               <Building className="w-3.5 h-3.5 text-slate-400" />
               <span>{item.source}</span>
             </span>
@@ -78,32 +81,43 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ item, onWhyThisSourc
           {item.title}
         </h3>
 
-        {/* Snippet Quote */}
-        <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 text-xs text-slate-300 leading-relaxed font-sans italic relative">
+        {/* Snippet / Evidence Extract */}
+        <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 text-xs text-slate-200 leading-relaxed font-sans italic relative">
           <span className="text-blue-500 font-serif text-lg leading-none select-none">“</span>
           {item.snippet}
           <span className="text-blue-500 font-serif text-lg leading-none select-none">”</span>
         </div>
 
         {/* Metadata Details */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 pt-1">
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-1">
           {item.publisher && (
             <div className="flex items-center space-x-1">
               <FileText className="w-3.5 h-3.5 text-slate-500" />
-              <span>{item.publisher}</span>
+              <span>Publisher: <strong className="text-slate-300">{item.publisher}</strong></span>
             </div>
           )}
           {item.date && (
             <div className="flex items-center space-x-1">
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              <span>{item.date}</span>
+              <span>Date: <strong className="text-slate-300">{item.date}</strong></span>
+            </div>
+          )}
+          {item.year && (
+            <div className="bg-slate-800/80 px-2 py-0.5 rounded text-indigo-300 font-bold">
+              Data Year: {item.year}
             </div>
           )}
           {item.doi && (
-            <div className="text-[11px] font-mono bg-slate-800/80 px-2 py-0.5 rounded text-blue-300">
+            <div className="font-mono bg-slate-800/80 px-2 py-0.5 rounded text-blue-300">
               DOI: {item.doi}
             </div>
           )}
+        </div>
+
+        {/* Timestamp */}
+        <div className="text-[10px] text-slate-500 flex items-center space-x-1 pt-0.5">
+          <Clock className="w-3 h-3 text-slate-600" />
+          <span>Retrieved: {item.retrievedAt || 'Live API Timestamp'}</span>
         </div>
       </div>
 
@@ -121,9 +135,9 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ item, onWhyThisSourc
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 text-xs font-semibold border border-blue-500/30 transition-all shadow-sm"
+          className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20"
         >
-          <span>View Source</span>
+          <span>Open Original Source</span>
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>
