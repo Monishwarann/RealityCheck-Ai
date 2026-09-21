@@ -142,7 +142,7 @@ When a claim contains numerical metrics (e.g., *"India's population is above 1.4
 - **Real-Time Proof Panel**: Displays server timestamp (`Verified live: 21 September 2026 22:42:18 IST`) and dynamic source metrics (`Sources queried: 11 | Responding: 9 | Relevant: 6`).
 - **Source Conflict Alert**: Displays `⚠ CONFLICTING LIVE EVIDENCE` warnings when datasets report differing metrics across years or survey methodologies.
 - **Dynamic Dataset Recommendations**: Suggests relevant open repositories based on claim context.
-- **Recharts Analytics**: Interactive Pie charts for stance breakdown and Bar charts for source category distribution.
+- **Recharts Visualizations**: Interactive Pie charts for stance breakdown and Bar charts for source category distribution.
 - **Source Explorer**: Live monitor matrix inspecting connector statuses (`Connected`, `Searching`, `No results`, `Rate limited`, `API Error`).
 
 ---
@@ -234,6 +234,10 @@ Returns backend health status, uptime, and server timestamp.
 
 ---
 
-## 📜 License
+## ⚖️ Copyright & License
 
-This project is licensed under the **[MIT License](LICENSE)** - see the [LICENSE](LICENSE) file for details.
+```
+Copyright (c) 2026 Monishwarann. All rights reserved.
+```
+
+This software is distributed under the **[MIT License](LICENSE)**. You are free to use, modify, and distribute this codebase for open-science, educational, and research projects provided the original copyright notice is retained.

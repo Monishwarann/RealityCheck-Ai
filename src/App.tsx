@@ -179,7 +179,7 @@ export const App: React.FC = () => {
             <span>— Real-Time Evidence Verification</span>
           </div>
           <div>
-            <span>Powered by 10 Free Open Data Repositories</span>
+            <span>Copyright © 2026 Monishwarann. All rights reserved. | MIT License</span>
           </div>
         </div>
       </footer>
