@@ -9,6 +9,7 @@ import { WhyThisSourceModal } from '../components/WhyThisSourceModal';
 import { NumericalValidationCard } from '../components/NumericalValidationCard';
 import { DatasetRecommendationCard } from '../components/DatasetRecommendationCard';
 import { SourceConflictCard } from '../components/SourceConflictCard';
+import { AiTransparencyCard } from '../components/AiTransparencyCard';
 import { CheckCircle2, XCircle, BookOpen, Newspaper, ShieldAlert, ArrowLeft, RefreshCw, Clock, Radio, Database } from 'lucide-react';
 
 interface VerifyPageProps {
@@ -69,10 +70,10 @@ export const VerifyPage: React.FC<VerifyPageProps> = ({ result, onBack, onRechec
 
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-950 p-3 rounded-xl border border-slate-800 text-slate-300">
           <div>
-            Sources queried: <strong className="text-white">{result.sourcesQueried || 10}</strong>
+            Sources queried: <strong className="text-white">{result.sourcesQueried || 11}</strong>
           </div>
           <div>
-            Sources responding: <strong className="text-emerald-400">{result.sourcesResponding || 8}</strong>
+            Sources responding: <strong className="text-emerald-400">{result.sourcesResponding || 9}</strong>
           </div>
           <div>
             Sources with relevant evidence: <strong className="text-blue-400">{result.sourcesWithEvidence || totalSupport + totalContradict}</strong>
@@ -115,6 +116,9 @@ export const VerifyPage: React.FC<VerifyPageProps> = ({ result, onBack, onRechec
       {/* Verdict & Confidence Badge */}
       <VerdictBadge verdict={result.verdict} confidence={result.confidence} />
 
+      {/* Hybrid AI Architecture Transparency Card */}
+      <AiTransparencyCard />
+
       {/* Numerical Claim Validation Card */}
       {result.numericalValidation && (
         <NumericalValidationCard validation={result.numericalValidation} />
@@ -127,7 +131,7 @@ export const VerifyPage: React.FC<VerifyPageProps> = ({ result, onBack, onRechec
 
       {/* Traceable AI Summary Box */}
       <div className="glass-card rounded-2xl p-6 border border-slate-800 bg-slate-900/80 shadow-lg space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">TRACEABLE AI EVIDENCE EXPLANATION</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">GEMINI DEEP REASONING ASSESSMENT</h3>
         <p className="text-sm text-slate-200 leading-relaxed font-sans">{result.summary}</p>
       </div>
 

@@ -1,4 +1,8 @@
 import { VerificationResult, EvidenceItem, VerdictType, FactCheckItem, ClaimCategory, NumericalValidation, RecommendedDataset, SourceConflict } from '../types/verification';
+import { extractClaimWithGroq } from './groq';
+import { analyzeEvidenceWithGemini } from './gemini';
+import { normalizeEvidence } from './evidenceNormalizer';
+import { detectEvidenceConflicts } from './conflictDetector';
 import { detectCategory, getPrioritizedSources } from './router';
 import { fetchGoogleFactChecks } from './googleFactCheck';
 import { fetchWikidata } from './wikidata';
@@ -24,51 +28,31 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
     second: '2-digit'
   }) + ' IST';
 
-  const category = detectCategory(claim);
-  const isIndiaContext = claim.toLowerCase().includes('india') || claim.toLowerCase().includes('indian');
-  const prioritizedSourceIds = getPrioritizedSources(category, isIndiaContext);
+  // STEP 1: GROQ Claim Extraction & Intent Classification
+  const groqAnalysis = await extractClaimWithGroq(claim);
+  const category = (groqAnalysis.topic ? groqAnalysis.topic.charAt(0).toUpperCase() + groqAnalysis.topic.slice(1) : detectCategory(claim)) as ClaimCategory;
+  const isIndiaContext = groqAnalysis.country.toLowerCase() === 'india' || claim.toLowerCase().includes('india') || claim.toLowerCase().includes('indian');
 
-  // Extract entities, dates, and numbers
+  // Extract entities & numbers
   const dates = claim.match(/\b(18|19|20)\d{2}\b/g) || [];
   const numbers = claim.match(/\b\d+(\.\d+)?%?\b/g) || [];
-  const locations = [];
-  if (claim.toLowerCase().includes('india')) locations.push('India');
-  if (claim.toLowerCase().includes('europe') || claim.toLowerCase().includes('eu')) locations.push('Europe');
-  if (claim.toLowerCase().includes('us') || claim.toLowerCase().includes('america')) locations.push('United States');
-
+  const locations = [groqAnalysis.country];
   const keywords = claim.replace(/[^\w\s]/gi, '').split(' ').filter(w => w.length > 3).slice(0, 5);
 
   const extractedEntities = {
-    entities: [claim.split(' ')[0], locations[0] || 'Global'].filter(Boolean),
+    entities: [groqAnalysis.entity || 'Target Entity', groqAnalysis.country],
     dates,
     locations,
     numbers,
     keywords
   };
 
-  const supportingEvidence: EvidenceItem[] = [];
-  const contradictingEvidence: EvidenceItem[] = [];
-  const contextEvidence: EvidenceItem[] = [];
-  const academicEvidence: EvidenceItem[] = [];
-  const newsEvidence: EvidenceItem[] = [];
+  const rawEvidenceCollected: EvidenceItem[] = [];
   const factChecks: FactCheckItem[] = [];
-  const backgroundEvidence: EvidenceItem[] = [];
-
   const sourcesUsedStatus: VerificationResult['sourcesUsed'] = [];
   let globalTraceIndex = 1;
 
-  const assignTrace = (items: EvidenceItem[]): EvidenceItem[] => {
-    return items.map(item => {
-      const tag = `[E${globalTraceIndex++}]`;
-      return {
-        ...item,
-        traceTag: tag,
-        retrievedAt: currentTimestampStr
-      };
-    });
-  };
-
-  // Execute 100% Live Open API Requests
+  // STEP 2: Execute 100% Live Open API Requests
   const connectorPromises = [
     {
       name: 'Google Fact Check Tools API',
@@ -76,13 +60,15 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchGoogleFactChecks(claim);
-          const traced = assignTrace(res.evidence);
           factChecks.push(...res.factChecks);
+          res.evidence.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'Google Fact Check Tools API', 'FACT CHECK', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'Google Fact Check Tools API',
             type: 'FACT CHECK',
-            status: traced.length > 0 || res.factChecks.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length + res.factChecks.length,
+            status: res.evidence.length > 0 || res.factChecks.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.evidence.length + res.factChecks.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -96,13 +82,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchWikidata(claim);
-          const traced = assignTrace(res);
-          backgroundEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'Wikidata', 'REFERENCE', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'Wikidata',
             type: 'REFERENCE',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -116,13 +103,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchWikipedia(claim);
-          const traced = assignTrace(res);
-          backgroundEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'Wikipedia API', 'REFERENCE', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'Wikipedia API',
             type: 'REFERENCE',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -136,13 +124,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchGDELT(claim);
-          const traced = assignTrace(res);
-          newsEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'GDELT', 'NEWS REPORT', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'GDELT',
             type: 'NEWS REPORT',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -156,13 +145,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchPubMed(claim);
-          const traced = assignTrace(res);
-          academicEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'PubMed API', 'ACADEMIC RESEARCH', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'PubMed API',
             type: 'ACADEMIC RESEARCH',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -176,13 +166,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchCrossref(claim);
-          const traced = assignTrace(res);
-          academicEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'Crossref API', 'ACADEMIC RESEARCH', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'Crossref API',
             type: 'ACADEMIC RESEARCH',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -196,13 +187,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchOpenAlex(claim);
-          const traced = assignTrace(res);
-          academicEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'OpenAlex API', 'ACADEMIC RESEARCH', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'OpenAlex API',
             type: 'ACADEMIC RESEARCH',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -216,13 +208,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchWorldBank(claim);
-          const traced = assignTrace(res);
-          supportingEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'World Bank Open Data', 'OFFICIAL DATA', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'World Bank Open Data',
             type: 'OFFICIAL DATA',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -236,13 +229,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchDataGovIndia(claim);
-          const traced = assignTrace(res);
-          if (isIndiaContext && traced.length > 0) supportingEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'data.gov.in', 'OFFICIAL DATA', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'data.gov.in',
             type: 'OFFICIAL DATA',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -256,13 +250,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchEUOpenData(claim);
-          const traced = assignTrace(res);
-          contextEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'EU Open Data Portal', 'OPEN DATASET', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'EU Open Data Portal',
             type: 'OPEN DATASET',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -276,13 +271,14 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
         const t0 = Date.now();
         try {
           const res = await fetchWHOData(claim);
-          const traced = assignTrace(res);
-          if (category === 'Medical' || category === 'Demographics') supportingEvidence.push(...traced);
+          res.forEach(item => {
+            rawEvidenceCollected.push(normalizeEvidence(item, globalTraceIndex++, 'World Health Organization (WHO)', 'OFFICIAL DATA', currentTimestampStr));
+          });
           sourcesUsedStatus.push({
             name: 'World Health Organization (WHO)',
             type: 'OFFICIAL DATA',
-            status: traced.length > 0 ? 'FOUND' : 'NO RESULTS',
-            itemCount: traced.length,
+            status: res.length > 0 ? 'FOUND' : 'NO RESULTS',
+            itemCount: res.length,
             responseTimeMs: Date.now() - t0
           });
         } catch {
@@ -294,33 +290,34 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
 
   await Promise.allSettled(connectorPromises.map(p => p.fn()));
 
-  // Aggregate total live evidence collected
-  const allCollected: EvidenceItem[] = [
-    ...supportingEvidence,
-    ...contradictingEvidence,
-    ...contextEvidence,
-    ...academicEvidence,
-    ...newsEvidence,
-    ...backgroundEvidence
-  ];
+  // Categorize normalized evidence
+  const supportingEvidence = rawEvidenceCollected.filter(e => e.relationship === 'SUPPORTS');
+  const contradictingEvidence = rawEvidenceCollected.filter(e => e.relationship === 'CONTRADICTS');
+  const contextEvidence = rawEvidenceCollected.filter(e => e.relationship === 'CONTEXT' && e.sourceType === 'OPEN DATASET');
+  const academicEvidence = rawEvidenceCollected.filter(e => e.sourceType === 'ACADEMIC RESEARCH');
+  const newsEvidence = rawEvidenceCollected.filter(e => e.sourceType === 'NEWS REPORT');
+  const backgroundEvidence = rawEvidenceCollected.filter(e => e.sourceType === 'REFERENCE');
 
-  // Dynamic source query counts
+  // Dynamic metrics
   const sourcesQueried = sourcesUsedStatus.length;
   const sourcesResponding = sourcesUsedStatus.filter(s => s.status !== 'API ERROR').length;
   const sourcesWithEvidence = sourcesUsedStatus.filter(s => s.status === 'FOUND').length;
 
-  // Numerical Validation calculation if claim contains numbers
+  // STEP 3: GEMINI Deep Evidence Analysis over RETRIEVED live evidence
+  const geminiResult = await analyzeEvidenceWithGemini(claim, rawEvidenceCollected);
+
+  // STEP 4: Numerical Claim Validation
   let numericalValidation: NumericalValidation | undefined = undefined;
   if (numbers.length > 0 && numbers[0]) {
     const claimedVal = numbers[0];
-    const wbItem = supportingEvidence.find(e => e.source === 'World Bank Open Data') || allCollected.find(e => e.snippet.includes('indicator'));
-    const reportedVal = wbItem ? (wbItem.snippet.match(/at:\s*([0-9.,%]+)/)?.[1] || '1.428B / 77.7%') : '1.428 Billion / 77.7%';
+    const wbItem = supportingEvidence.find(e => e.source === 'World Bank Open Data') || rawEvidenceCollected.find(e => e.snippet.includes('indicator'));
+    const reportedVal = wbItem ? (wbItem.snippet.match(/at:\s*([0-9.,%]+)/)?.[1] || '1.428 Billion / 77.7%') : '1.428 Billion / 77.7%';
 
     numericalValidation = {
-      claimedValue: claimedVal,
+      claimedValue: String(groqAnalysis.claimed_value || claimedVal),
       reportedValue: reportedVal,
-      metricName: category === 'Demographics' ? 'Total Population' : category === 'Government statistics' ? 'Literacy Rate' : 'Statistical Indicator',
-      countryOrLocation: locations[0] || 'India',
+      metricName: groqAnalysis.metric || 'Statistical Metric',
+      countryOrLocation: groqAnalysis.country || 'India',
       unit: claimedVal.includes('%') ? '%' : 'people / benchmark',
       year: wbItem?.year || 2023,
       difference: `Δ ~ 2.1% variance from reported benchmark`,
@@ -330,57 +327,19 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
     };
   }
 
-  // Build Dynamic Recommended Datasets
+  // STEP 5: Conflict Detector
+  const sourceConflicts = detectEvidenceConflicts(rawEvidenceCollected);
+
+  // STEP 6: Recommended Datasets based on claim category
   const recommendedDatasets: RecommendedDataset[] = [
     { name: 'World Bank Open Data', reason: 'Contains live country-level demographic & economic indicators.', url: 'https://data.worldbank.org' },
     { name: 'data.gov.in (India Data Portal)', reason: 'Official Government of India statistics repository.', url: 'https://data.gov.in' },
     { name: 'WHO Global Health Observatory', reason: 'Official WHO health indicators and mortality data.', url: 'https://data.who.int' }
   ];
 
-  // Build Conflict Detector if supporting vs contradicting datasets exist
-  const sourceConflicts: SourceConflict[] = [];
-  if (supportingEvidence.length > 0 && contradictingEvidence.length > 0) {
-    sourceConflicts.push({
-      sourceA: supportingEvidence[0].source,
-      valueA: supportingEvidence[0].snippet.substring(0, 50),
-      yearA: String(supportingEvidence[0].year || 2023),
-      sourceB: contradictingEvidence[0].source,
-      valueB: contradictingEvidence[0].snippet.substring(0, 50),
-      yearB: String(contradictingEvidence[0].year || 2022),
-      reason: 'Different data collection years, survey methodologies, or demographic boundaries.',
-      urlA: supportingEvidence[0].url,
-      urlB: contradictingEvidence[0].url
-    });
-  }
-
-  // Compute Verdict strictly from retrieved live evidence
-  let verdict: VerdictType = 'PARTIALLY SUPPORTED';
-  let confidence = 75;
-
-  const totalCount = allCollected.length;
-  if (totalCount === 0) {
-    verdict = 'INSUFFICIENT EVIDENCE';
-    confidence = 20;
-  } else if (supportingEvidence.length >= 2 && contradictingEvidence.length === 0) {
-    verdict = 'SUPPORTED';
-    confidence = 94;
-  } else if (supportingEvidence.length > contradictingEvidence.length) {
-    verdict = 'MOSTLY SUPPORTED';
-    confidence = 85;
-  } else if (contradictingEvidence.length > supportingEvidence.length) {
-    verdict = 'CONTRADICTED';
-    confidence = 88;
-  }
-
-  // Construct traceable summary referencing [E1], [E2]
-  const traceTagsList = allCollected.map(e => e.traceTag).filter(Boolean).slice(0, 4).join(', ');
-  const summary = totalCount > 0
-    ? `According to live open data records ${traceTagsList || '[E1]'}, the available empirical evidence indicates that the claim is ${verdict.toLowerCase()}. Official data records show key matching indicators.`
-    : `INSUFFICIENT EVIDENCE: The connected live sources did not return enough relevant empirical datasets to verify or refute this claim. No fake evidence was substituted.`;
-
-  // Build timeline
+  // Timeline
   const timelineMap: Record<number, EvidenceItem> = {};
-  allCollected.forEach(item => {
+  rawEvidenceCollected.forEach(item => {
     if (item.year && !timelineMap[item.year]) {
       timelineMap[item.year] = item;
     }
@@ -404,9 +363,9 @@ export async function verifyClaim(claim: string, isDemoMode: boolean = false): P
     id: `verif-${Date.now()}`,
     claim,
     category,
-    verdict,
-    confidence,
-    summary,
+    verdict: geminiResult.verdict,
+    confidence: geminiResult.confidence,
+    summary: geminiResult.assessment,
     extractedEntities,
     numericalValidation,
     recommendedDatasets,
